@@ -62,12 +62,15 @@ rules[switchOffCmdName] = {
 // Tests
 //-------------------------------------------------------------------------------------------------------
 var userToken;
+var userId;
+var accountInfo;
 var accountId;
 var deviceId;
 var deviceToken;
 var componentId;
 var actuatorId;
 var ruleId;
+var alertId;
 var componentParamName;
 var firstObservationTime;
 
@@ -197,45 +200,202 @@ describe("Waiting to OISP services to be ready ...\n".bold, function() {
     }).timeout(2*60*1000);
 })
 
-describe("Creating account and device ...\n".bold, function() {
-
+describe("Login and add user ...\n".bold, function() {
+      
     it('Shall authenticate', function(done) {
         var username = process.env.USERNAME;
         var password = process.env.PASSWORD;
-
         assert.isNotEmpty(username, "no username provided");
         assert.isNotEmpty(password, "no password provided");
 
-        helpers.login(username, password, function(err, token) {
+        helpers.auth.login(username, password, function(err, token) {
             if (err) {
                 done(new Error("Cannot authenticate: " + err));
             } else {
                 userToken = token;
                 done();
+            }   
+        })
+    })
+    /*
+    it('Shall get user info', function (done) {
+        helpers.auth.userInfo(userToken, function (err, UserInfo) {
+            if (err) {
+                done(new Error("Cannot get usr info: " + err));
+            } else {
+                console.dir(UserInfo);
+                done();
             }
         })
     })
-
-    it('Shall create account', function(done) {
-        assert.notEqual(userToken, null, "Invalid user token")
-
-        helpers.createAccount(accountName, userToken, function(err, id) {
+    */
+    it('Shall get token info', function (done) {
+        helpers.auth.tokenInfo(userToken, function (err, tokenInfo) {
             if (err) {
-                done(new Error("Cannot create account: " + err));
+                done(new Error("Cannot get token info: " + err));
             } else {
-                accountId = id;
+                assert.equal(tokenInfo.header.typ, 'JWT', 'response type error' );
+                //console.dir(tokenInfo);
                 done();
             }
         })
     })
 
+    it('Shall create a new user', function(done) {
+        assert.notEqual(userToken, null, "Invalid user token")
+        var username = "newoisp@test.com"
+        var password = "oisppass2"
+        helpers.users.addUser(userToken, username, password ,function(err, response) {
+            if (err) {
+                done(new Error("Cannot create user: " + err));
+            } else {
+                userId = response.id;
+                done();
+            }
+        })
+    })
+
+})
+
+describe("Creating account and device ...\n".bold, function() {
+  
+    it('Shall create account', function(done) {
+        assert.notEqual(userToken, null, "Invalid user token")
+        helpers.accounts.createAccount(accountName, userToken, function(err, response) {
+            if (err) {
+                done(new Error("Cannot create account: " + err));
+            } else {
+                assert.equal(response.name, accountName, "accounts name is wrong");
+                accountId = response.id;
+                done();
+            }
+        }) 
+    })
+
+    it('Shall get account info', function (done) {
+        helpers.accounts.getAccountInfo(accountId, userToken, function (err, response) {
+            if (err) {
+                done(new Error("Cannot get account info: " + err));
+            } else {
+                accountInfo = response;
+                done();
+            }
+        })
+    })
+
+    it('Shall update an account', function (done) {
+
+        accountInfo.attributes = {
+            "phone":"123456789",
+            "another_attribute":"another_value",
+            "new":"next_string_value"
+        }
+
+        helpers.accounts.updateAccount(accountId, userToken, accountInfo, function (err, response) {
+            if (err) {
+                done(new Error("Cannot update account: " + err));
+            } else {
+                assert.deepEqual(response.attributes, accountInfo.attributes, 'new attributes not being updated');
+                done();
+            }
+        })
+    })
+
+    it('Shall get account activation code', function (done) {
+
+        helpers.accounts.getAccountActivationCode(accountId, userToken, function (err, response) {
+            if (err) {
+                done(new Error("Cannot get account activation code: " + err));
+            } else {
+                done();
+            }
+        })
+    })
+
+    it('Shall refresh account activation code', function (done) {
+
+        helpers.accounts.refreshAccountActivationCode(accountId, userToken, function (err, response) {
+            if (err) {
+                done(new Error("Cannot refresh account activation code: " + err));
+            } else {
+                done();
+            }
+        })
+    })
+
+    it('Shall list all users for account', function (done) {
+        
+        helpers.accounts.getAccountUsers(accountId, userToken, function (err, response) {
+            if (err) {
+                done(new Error("Cannot list users for account: " + err));
+            } else {
+                for(var key in response.accounts){
+                    assert.equal(key, accountId, 'wrong user account') //only one key in accounts
+                }
+                done();
+            }
+        })
+    })
+
+
     it('Shall create device', function(done) {
         assert.notEqual(accountId, null, "Invalid account id")
 
-        helpers.createDevice(deviceName, deviceId, userToken, accountId, function(err, id) {
+        helpers.devices.createDevice(deviceName, deviceId, userToken, accountId, function(err, response) {
             if (err) {
                 done(new Error("Cannot create device: " + err));
             } else {
+                assert.equal(response.deviceId, deviceId, 'incorrect device id')
+                assert.equal(response.name, deviceName, 'incorrect device name')
+                done();
+            }
+        })
+    })
+
+    it('Shall get a list of all devices', function(done) {
+
+        helpers.devices.getDevices(userToken, accountId, function(err, response) {
+            if (err) {
+                done(new Error("Cannot get list of devices: " + err));
+            } else {
+                assert.equal(response[0].deviceId, deviceId, 'incorrect device id')
+                done();
+            }
+        })
+    })
+
+    it('Shall update info of a device', function(done) {
+        var deviceInfo = {
+            "gatewayId": deviceId,
+            "name": deviceName,
+            "loc": [ 45.12345, -130.654321, 121.1],
+            "attributes": {
+                "vendor": "intel",
+                "platform": "x86",
+                "os": "linux"
+            }
+        }
+        helpers.devices.updateDeviceDetails(userToken, accountId, deviceId, deviceInfo, function(err, response) {
+            if (err) {
+                done(new Error("Cannot update device info: " + err));
+            } else {
+                assert.notEqual(response, null ,'device list is null')
+                assert.deepEqual(response.attributes, deviceInfo.attributes, 'device info is not updated')
+                done();
+            }
+        })
+    })
+
+    it('Shall get detail of one devices', function(done) {
+
+        helpers.devices.getDeviceDetails(userToken, accountId, deviceId, function(err, response) {
+            if (err) {
+                done(new Error("Cannot get detail of device: " + err));
+            } else {
+                assert.equal(response.deviceId, deviceId, 'incorrect device id')
+                assert.deepEqual(response.attributes,
+                    {"vendor": "intel", "platform": "x86", "os": "linux"},
+                    'incorrect device attributes' )
                 done();
             }
         })
@@ -244,23 +404,58 @@ describe("Creating account and device ...\n".bold, function() {
     it('Shall activate device', function(done) {
         assert.notEqual(deviceId, null, "Invalid device id")
 
-        helpers.activateDevice(userToken, accountId, deviceId, function(err, token) {
+        helpers.devices.activateDevice(userToken, accountId, deviceId, function(err, response) {
             if (err) {
                 done(new Error("Cannot activate device " + err));
             } else {
-                deviceToken = token;
+                assert.isString(response.deviceToken, 'device token is not string')
+                deviceToken = response.deviceToken;
+                done();
+            }
+        })
+    })
+
+})
+/*
+describe("Geting and manage alerts ... \n".bold, function(){
+
+    it('Shall get list of alerts', function(done){
+        assert.notEqual(accountId, null, "Invalid account id")
+        
+        helpers.alerts.getListOfAlerts(userToken, accountId, function(err, response) {
+            if (err) {
+                done(new Error("Cannot get list of alerts: " + err));
+            } else {
+                assert.notEqual(response, null ,'device list is null')
+                console.dir(response)
+                alertId = response.alertId
+                done();
+            }
+        })
+    })
+
+    it('Shall get alert infomation', function(done){
+        assert.notEqual(accountId, null, "Invalid account id")
+        
+        helpers.alerts.getAlertDetails(userToken, accountId, function(err, response) {
+            if (err) {
+                done(new Error("Cannot get list of alerts: " + err));
+            } else {
+                assert.notEqual(response, null ,'device list is null')
+                console.dir(response.conditions)
+                alertId = response.alertId
                 done();
             }
         })
     })
 })
-
+*/
 describe("Creating components and rules ... \n".bold, function() {
 
     it('Shall create component', function(done) {
         assert.notEqual(deviceToken, null, "Invalid device token")
 
-        helpers.createComponent(componentName, componentType, userToken, accountId, deviceId, false, function(err, id) {
+        helpers.devices.addDeviceComponent(componentName, componentType, userToken, accountId, deviceId, false, function(err, id) {
             if (err) {
                 done(new Error("Cannot create component: " + err));
             } else {
@@ -274,7 +469,7 @@ describe("Creating components and rules ... \n".bold, function() {
     it('Shall create actuator', function(done) {
         assert.notEqual(deviceToken, null, "Invalid device token")
 
-        helpers.createComponent(actuatorName, actuatorType, userToken, accountId, deviceId, false, function(err, id) {
+        helpers.devices.addDeviceComponent(actuatorName, actuatorType, userToken, accountId, deviceId, false, function(err, id) {
             if (err) {
                 done(new Error("Cannot create actuator: " + err));
             } else {
@@ -287,7 +482,8 @@ describe("Creating components and rules ... \n".bold, function() {
     it('Shall create switch-on actuation command', function(done) {
         assert.notEqual(actuatorId, null, "Invalid actuator id")
 
-        helpers.createCommand(switchOnCmdName, componentParamName, 1, userToken, accountId, deviceId, actuatorId, function(err) {
+
+        helpers.control.saveComplexCommand(switchOnCmdName, componentParamName, 1, userToken, accountId, deviceId, actuatorId, function(err) {
             if (err) {
                 done(new Error("Cannot create switch-on command: " + err));
             } else {
@@ -300,7 +496,7 @@ describe("Creating components and rules ... \n".bold, function() {
     it('Shall create switch-off actuation command', function(done) {
         assert.notEqual(actuatorId, null, "Invalid actuator id")
 
-        helpers.createCommand(switchOffCmdName, componentParamName, 0, userToken, accountId, deviceId, actuatorId, function(err) {
+        helpers.control.saveComplexCommand(switchOffCmdName, componentParamName, 0, userToken, accountId, deviceId, actuatorId, function(err) {
             if (err) {
                 done(new Error("Cannot create switch-off command: " + err));
             } else {
@@ -315,7 +511,7 @@ describe("Creating components and rules ... \n".bold, function() {
 
         rules[switchOnCmdName].cid = componentId;
 
-        helpers.createRule(rules[switchOnCmdName], userToken, accountId, deviceId, function(err, id) {
+        helpers.rules.createRule(rules[switchOnCmdName], userToken, accountId, deviceId, function(err, id) {
             if (err) {
                 done(new Error("Cannot create switch-on rule: " + err));
             } else {
@@ -331,7 +527,7 @@ describe("Creating components and rules ... \n".bold, function() {
 
         rules[switchOffCmdName].cid = componentId;
 
-        helpers.createRule(rules[switchOffCmdName], userToken, accountId, deviceId, function(err, id) {
+        helpers.rules.createRule(rules[switchOffCmdName], userToken, accountId, deviceId, function(err, id) {
             if (err) {
                 done(new Error("Cannot create switch-off rule: " + err));
             } else {
@@ -374,7 +570,7 @@ describe("Sending observations and cheking rules ...\n".bold, function() {
             }
         };
 
-        helpers.wsConnect(proxyConnector, deviceToken, deviceId, function(message) {
+        helpers.connector.wsConnect(proxyConnector, deviceToken, deviceId, function(message) {
             --nbActuations;
 
             var expectedValue = temperatureValues[index].expectedActuation.toString();
@@ -405,7 +601,7 @@ describe("Sending observations and cheking rules ...\n".bold, function() {
             
             process.stdout.write(".".green);
 
-            helpers.sendObservation(temperatureValues[index].value, deviceToken, accountId, deviceId, componentId, function(err, ts) {
+            helpers.devices.submitData(temperatureValues[index].value, deviceToken, accountId, deviceId, componentId, function(err, ts) {
                 temperatureValues[index].ts = ts;
 
                 if (index == 0) {
@@ -429,7 +625,7 @@ describe("Sending observations and cheking rules ...\n".bold, function() {
     //---------------------------------------------------------------
 
     it('Shall check observation', function(done) {
-        helpers.getData(firstObservationTime, userToken, accountId, deviceId, componentId, function(err, data) {
+        helpers.data.getData(firstObservationTime, userToken, accountId, deviceId, componentId, function(err, data) {
             if (err) {
                 done(new Error("Cannot get data: " + err))
             }
