@@ -24,6 +24,7 @@ export POSTGRES_PORT='5432'
 export POSTGRES_USERNAME='postgres'
 export POSTGRES_PASSWORD='intel123'
 export KAFKA='kafka:9092'
+export KAFKA_HEARTBEAT_TOPIC='heartbeat'
 export GEARPUMP='gearpump:8090'
 export BACKEND='backend:8080'
 export NGINX='nginx'
@@ -98,7 +99,7 @@ export VCAP_SERVICES='{
      "host": "auth.smtp.1and1.co.uk",
      "port": "587",
      "protocol": "smtp",
-     "username": "info@streammyiot.com",
+     "username": "test.sender@streammyiot.com",
      "password": "smtp-password-goes-here"
     },
     "label": "smtp",
@@ -136,7 +137,7 @@ export VCAP_SERVICES='{
                     "observations": "metrics",
                     "rule_engine": "rules-update",
                     "heartbeat": {
-                        "name": "heartbeat",
+                        "name": "'$KAFKA_HEARTBEAT_TOPIC'",
                         "interval": 5000
                     }
                 }
@@ -169,7 +170,7 @@ export VCAP_SERVICES='{
 },
 {
     "credentials": {
-    "sender": "sysadmin@localhost"
+    "sender": "test.sender@streammyiot.com"
     },
     "name": "mail-ups"
 },
