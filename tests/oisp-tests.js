@@ -41,11 +41,11 @@ var actuatorType = "powerswitch.v1.0";
 var switchOnCmdName = "switch-on";
 var switchOffCmdName = "switch-off";
 
-
 var imap_username = process.env.IMAP_USERNAME;
 var imap_password = process.env.IMAP_PASSWORD; 
 var imap_host     = process.env.IMAP_HOST;
 var imap_port     = process.env.IMAP_PORT;
+
 
 var recipientEmail = imap_username; 
 var emailNum = 1;
