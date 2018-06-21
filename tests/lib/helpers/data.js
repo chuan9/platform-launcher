@@ -154,6 +154,7 @@ function searchDataAdvanced(from, userToken, accountId, deviceId, cid, cb) {
         if (err) {
             cb(err)
         } else {
+            assert.notEqual(response, null, 'response is null')
             cb(null, response)
         }
     });

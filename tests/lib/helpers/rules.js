@@ -235,13 +235,27 @@ function createDraftRule (draftname, userToken, accountId, cb) {
         accountId: accountId,
 
         body: {
-            priority: "Medium",
-            type: "Regular",
-            resetType: "Automatic",
-            name: draftname
+            priority: null,
+            type: null,
+            resetType: null,
+            name: draftname,
+            
+            actions:[{
+                type:"mail",
+                target:[]
+            }],
+            population:{
+                name:null,
+                ids:[],
+                tags:[],
+                attributes:null
+            },
+            conditions: {
+                operator: null,
+                values: []
+            }
         }
     };
-
 
     api.rules.createDraftRule(data, function(err, response) {
         if (err) {

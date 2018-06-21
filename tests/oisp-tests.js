@@ -41,15 +41,14 @@ var actuatorType = "powerswitch.v1.0";
 var switchOnCmdName = "switch-on";
 var switchOffCmdName = "switch-off";
 
-var Imap = require("imap");
-var MailParser = require("mailparser").MailParser;
-
-var emailRecipient = "test.receiver@streammyiot.com"
 
 var imap_username = process.env.IMAP_USERNAME;
 var imap_password = process.env.IMAP_PASSWORD; 
 var imap_host     = process.env.IMAP_HOST;
 var imap_port     = process.env.IMAP_PORT;
+
+var recipientEmail = imap_username; 
+var emailNum = 1;
 
 var rules = [];
 
@@ -65,7 +64,7 @@ rules[switchOnCmdName] = {
                 },
                 {
                     type: "mail",
-                    target: [ emailRecipient ]
+                    target: [ recipientEmail ]
                 }
             ],
 };
@@ -82,7 +81,7 @@ rules[switchOffCmdName] = {
                 },
                 {
                     type: "mail",
-                    target: [ emailRecipient ]
+                    target: [ recipientEmail ]
                 }
             ],
 };
@@ -92,8 +91,6 @@ rules[switchOffCmdName] = {
 //-------------------------------------------------------------------------------------------------------
 var userToken;
 var receiverToken;
-var receiveremail = "test.receiver@streammyiot.com";
-var receiverpassword = "Receiver123";
 var receiveruserId;
 var receiveraccountId;
 var userId; 
@@ -718,7 +715,6 @@ describe("Sending observations and checking rules ...\n".bold, function() {
 
         var index = 0;
         var nbActuations = 0;
-        var emailNum = 1;
         
         process.stdout.write("    ");
 
@@ -740,7 +736,6 @@ describe("Sending observations and checking rules ...\n".bold, function() {
             }
         };
 
-        assert.notEqual(deviceToken, null, "Invalid device token")
 
         helpers.connector.wsConnect(proxyConnector, deviceToken, deviceId, function(message) {
             --nbActuations;
@@ -758,48 +753,24 @@ describe("Sending observations and checking rules ...\n".bold, function() {
                 {
                     helpers.mail.getEmailMessage(imap_username, imap_password, imap_host, imap_port, emailNum, function(err, message) {
                         if (!err) {
-                            var regExps = [
-                                {
-                                    value: /^To:.*/,
-                                    expected: emailRecipient,
-                                    found: false
-                                },
-                                {
-                                    value: /^- Device:.*/,
-                                    expected: deviceId,
-                                    found: false
-                                },
-                                {
-                                    value: /^- Reason:.*/,
-                                    expected: temperatureValues[index].expectedEmailReason,
-                                    found: false
-                                }
-                            ];
                             var lines = message.toString().split("\n");
                             var i;
-
                             for(i=0; i<lines.length; i++) {
-                                regExps.forEach(function(regExp) {
-                                    if ( regExp.value.test(lines[i]) ) {
-                                        var value = lines[i].split(":")[1].trim();
-                                        if ( value ==  regExp.expected ) {
-                                            regExp.found = true;
-                                        }
+                                var reExecReason = /^- Reason:.*/;
+                                if ( reExecReason.test(lines[i]) ) {
+                                    var reason = lines[i].split(":")[1].trim();
+                                    if ( reason == temperatureValues[index].expectedEmailReason ) {
+                                        break;
                                     }
-                                })
-                            }
-
-                            for(i=0; i<regExps.length; i++) {
-                                if ( regExps[i].found == false ) {
-                                    break;
                                 }
                             }
-                            if ( i == regExps.length ) {
-                                emailNum++;
-                                step();
+
+                            if ( i==lines.length ) {
+                                done(new Error("Wrong email " + message ))
                             }
                             else {
-                                done(new Error("Wrong email " + message ))
+                                emailNum++;
+                                step();
                             }
                         }
                         else {
@@ -841,7 +812,7 @@ describe("Sending observations and checking rules ...\n".bold, function() {
 
         sendObservationAndCheckRules(index);
 
-    }).timeout(50000)
+    }).timeout(2*60*1000)
 
     //---------------------------------------------------------------
 
@@ -883,8 +854,7 @@ describe("Sending observations and checking rules ...\n".bold, function() {
             if (err) {
                 done(new Error("Cannot get data: " + err))
             }else {
-                /////////////////??????????????????????????????????/
-                console.dir(response)
+                assert.equal(response.data[0].deviceId, deviceId, 'advance search fail')
                 done()
             }
 
@@ -901,7 +871,7 @@ describe("Geting and manage alerts ... \n".bold, function(){
                 done(new Error("Cannot get list of alerts: " + err));
             } else {
                 assert.notEqual(response, null ,'response is null')
-                //assert.equal(response.length, 7, 'get wrong number of alerts')
+                assert.equal(response.length, 7, 'get wrong number of alerts')
                 alertlist = response
                 done();
             }
@@ -932,14 +902,14 @@ describe("Geting and manage alerts ... \n".bold, function(){
                 done(new Error("Cannot get list of alerts: " + err));
             } else {
                 assert.notEqual(response, null ,'response is null')
-                //assert.equal(response.conditions[0].condition, 'temperature-sensor > 25', 'get error alert')
+                assert.equal(response.conditions[0].condition, 'temperature-sensor > 25', 'get error alert')
                 done();
             }
         })
     })
 
     it('Shall update alert status', function(done){     
-        helpers.alerts.updateAlertStatus(userToken, accountId, alertlist[0].alertId, 'Open', function(err, response) {
+        helpers.alerts.updateAlertStatus(userToken, accountId, alertlist[1].alertId, 'Open', function(err, response) {
             if (err) {
                 done(new Error("Cannot update alert status " + err));
             } else {
@@ -951,7 +921,7 @@ describe("Geting and manage alerts ... \n".bold, function(){
     })
     
     it('Shall clear alert infomation', function(done){
-        helpers.alerts.closeAlert(userToken, accountId, alertlist[0].alertId, function(err, response) {
+        helpers.alerts.closeAlert(userToken, accountId, alertlist[2].alertId, function(err, response) {
             if (err) {
                 done(new Error("Cannot clear alert infomation " + err));
             } else {
@@ -1027,106 +997,13 @@ describe("update rules and create draft rules ... \n".bold, function(){
         })
     })
 })
-/*
-describe("Adding user ,posting email and change password...\n".bold, function() {
-    var activationToken = "";
-    var imap = new Imap({
-        user: "test.receiver@streammyiot.com",
-        password: "OISP123!!",
-        host: "imap.1and1.co.uk",
-        port: 993,
-        tls: true
-    });
-    function openInbox(cb) {
-        imap.openBox("INBOX", false, cb);
-    }
-    var getEmail = function(flag, cb) {
-        console.log("get email again");
-        imap.once("ready", function() {
-            openInbox(function(err, box) {
-                if (err) throw err;
-                imap.search([ "UNSEEN", [ "SINCE", "May 20, 2017" ] ], function(err, results) {
-                    if (err) {
-                        console.log(err);
-                    }
-                    try {
-                        var f = imap.fetch(results, {
-                            HEADER: "Enable IoT verification",
-                            bodies: "",
-                            markSeen: true
-                        });
-                        f.on("message", function(msg, seqno) {
-                            var mailparser = new MailParser();
-                            msg.on("body", function(stream, info) {
-                                stream.pipe(mailparser);
-                                mailparser.on("headers", function(headers) {});
-                                mailparser.on("data", function(data) {
-                                    if (data.type === "text") {
-                                        var emailBody = data.html;
-                                        try {
-                                            var activationUrl = emailBody.split('href="')[1].split('">')[0];
-                                            activationToken = activationUrl.split("token=")[1];
-                                            console.log("token:", activationToken, "--url:", activationUrl);
-                                        } catch (e) {
-                                            console.log("can't get activate token");
-                                            imap.end();
-                                        }
-                                    }
-                                    if (data.type === "attachment") {}
-                                });
-                            });
-                            msg.once("end", function() { imap.end()});
-                        });
-                        f.once("error", function(err) {
-                            console.log("fetch error:" + err);
-                        });
-                        f.once("end", function() {
-                            imap.end();
-                        });
-                    } catch (e) {
-                        //no email received
-                        imap.end();
-                    }
-                });
-            });
-        });
-        imap.once("error", function(err) {
-            console.log(err);
-        });
-        imap.once("end", function() {
-            if ("clear" == flag){
-                activationToken = "";
-                cb("clear all unread emails");
-            }
-            else if ("get" == flag){
-                console.log("get:::token::", activationToken);
-                if (activationToken == "") {
-                    console.log("waiting for email");
-                    console.dir(cb);
-                    process.stdout.write("....");
-                    setTimeout(function() {
-                        getEmail("get", cb);
-                    }, 3000);
-                } else {
-                    console.log("get real token", activationToken);
-                    cb(activationToken);
-                }
-            }
-        });
-        imap.connect();
-    };
 
-    before(function(done){
-        getEmail("clear", function(res){
-            console.log(res);
-            done();
-        });
-    })
+describe("Adding user and posting email ...\n".bold, function() {
 
-    it('Shall add a new user', function(done) {
-        assert.isNotEmpty(receiveremail, "no email provided");
-        assert.isNotEmpty(receiverpassword, "no password provided");
-        helpers.users.addUser(userToken, receiveremail, receiverpassword ,function(err, response) {
+    it("Shall add a new user and post email", function(done) {
+        assert.isNotEmpty(imap_username, "no email provided");
+        assert.isNotEmpty(imap_password, "no password provided");
+        helpers.users.addUser(userToken, imap_username, imap_password ,function(err, response) {
             if (err) {
                 done(new Error("Cannot create new user: " + err));
             } else {
@@ -1137,27 +1014,48 @@ describe("Adding user ,posting email and change password...\n".bold, function() 
     })
 
     it("Shall activate user with token", function(done) {
-        getEmail("get", function(token) {
-            process.stdout.write("receiving email...");
-            assert.isNotEmpty(token, "no username provided");
-            helpers.users.activateUser(token, function(err, response) {
-                if (err) {
-                    done(new Error("Cannot activate user: " + err));
-                } else {
-                    console.log(response)
+        process.stdout.write("receiving email...");
+        helpers.mail.getEmailMessage(imap_username, imap_password, imap_host, imap_port, emailNum, function(err, message) {
+            if (!err) {
+                
+                console.log("email message:", message.toString())
 
-                    helpers.auth.login(receiveremail, receiverpassword, function(err, token) {
-                        if (err) {
-                            done(new Error("Cannot authenticate receiver: " + err));
-                        } else {
-                            receiverToken = token;
-                            done();
-                        }   
-                    })
+                var regexp = /token=\w*?\r/
+                var activationline = regexp.exec(message.toString());
+                var rawactivation = activationline[0].split("token=")[1].toString();
+                var activationToken = rawactivation.replace(/\r/, '')
+                activationToken = activationToken.substring(2)
+
+                if ( activationToken === null) {
+                    done(new Error("Wrong email " + message ))
                 }
-            });
-        });
-    }).timeout(2 * 60 * 1000);
+                else {
+                    assert.isString(activationToken,'activationToken is not string')
+                    emailNum++;
+
+                    helpers.users.activateUser(activationToken, function(err, response) {
+                        if (err) {
+                            done(new Error("Cannot activate user: " + err));
+                        } else {
+                            assert.equal(response.status, 'OK', 'cannot activate user')
+
+                            helpers.auth.login(imap_username, imap_password, function(err, token) {
+                                if (err) {
+                                    done(new Error("Cannot authenticate receiver: " + err));
+                                } else {
+                                    receiverToken = token;
+                                    done();
+                                }   
+                            })
+                        }
+                    });
+                }
+            }
+            else {
+                done(new Error("Wrong email " + err ))
+            }
+        })
+    }).timeout( 60 * 1000);        
 
     it('Shall create receiver account', function(done) {
         assert.notEqual(receiverToken, null, "Invalid user token")
@@ -1167,74 +1065,23 @@ describe("Adding user ,posting email and change password...\n".bold, function() 
             } else {
                 assert.equal(response.name, 'receiver', "accounts name is wrong");
                 receiveraccountId = response.id;
-                console.log('receiver accountId is : ')
-                console.log(receiveraccountId)
                 done();
             }
         }) 
     })
-
-    it('Shall request change receiver password', function(done) {
-
-        helpers.users.requestUserPasswordChange(receiveremail, function(err, response) {
-            if (err) {
-                done(new Error("Cannot request change password : " + err));
-            } else {
-                assert.equal(response.status, 'OK', 'status error')
-                done();
-            }
-        })
-    })
-
-    it('Shall update receiver password', function(done) {
-
-        getEmail("clear", function(res){
-            console.log(res);
-        
-            getEmail("get", function(token) {
-                receiverpassword = 'Receiver12345'
-
-                helpers.users.updateUserPassword(token, receiverpassword, function(err, response) {
-                    if (err) {
-                        console.log(err)
-                        done();
-                    } else {
-                        console.log(response)
-                        done();
-                    }
-                })
-            })
-        
-        });
-    }).timeout(2 * 60 * 1000);
-
-    it('Shall change password', function(done) {
-        var username = process.env.USERNAME;
-        var oldPasswd = process.env.PASSWORD;
-        var newPasswd = 'oispnewpasswd2'
-
-        helpers.users.changeUserPassword(userToken, username, oldPasswd, newPasswd, function(err, response) {
-            if (err) {
-                done(new Error("Cannot change password: " + err));
-            } else {
-                assert.equal(response.password, 'oispnewpasswd2', 'new password error')
-                done();
-            }
-        })
-    })
-
 });
 
 describe("Invite receiver ...\n".bold, function() {
 
     it('Shall create invitation', function(done){
-
-        helpers.invitation.createInvitation(userToken, accountId, receiveremail, function(err, response) {
+        // a mail will be sent to receiver
+        
+        helpers.invitation.createInvitation(userToken, accountId, imap_username, function(err, response) {
             if (err) {
-                console.log(err)
-                done();
+                done(new Error("Cannot create invitation: " + err));
             } else {
-                console.log(response)
+                emailNum++;
+                assert.equal(response.email, imap_username, 'send invite to wrong name')
                 done();
             }
         })
@@ -1245,28 +1092,26 @@ describe("Invite receiver ...\n".bold, function() {
 
         helpers.invitation.getAllInvitations(userToken, accountId, function(err, response) {
             if (err) {
-                console.log(err)
-                done();
+                done(new Error("Cannot get invitation: " + err));
             } else {
-                console.log(response)
+                assert.equal(response[0], imap_username, 'send invite to wrong name')
                 done();
             }
         })
     })
         
     it('Shall delete invitation and send again', function(done){
-        helpers.invitation.deleteInvitations(userToken, accountId, receiveremail, function(err, response) {
+        helpers.invitation.deleteInvitations(userToken, accountId, imap_username, function(err, response) {
             if (err) {
-                console.log(err)
-                done();
+                done(new Error("Cannot delete invitation: " + err));
             } else {
-                console.log(response)
-                helpers.invitation.createInvitation(userToken, accountId, receiveremail, function(err, response) {
+                helpers.invitation.createInvitation(userToken, accountId, imap_username, function(err, response) {
+                    // when send invitation, the receiver will receive an email said he should login to accept the invitation
                     if (err) {
-                        console.log(err)
-                        done();
+                        done(new Error("Cannot create invitation: " + err));
                     } else {
-                        console.log(response)
+                        emailNum++;
+                        assert.equal(response.email, imap_username, 'send invite to wrong name')
                         done();
                     }
                 })
@@ -1275,12 +1120,13 @@ describe("Invite receiver ...\n".bold, function() {
     })
 
     it('Shall get specific invitations', function(done){
-        helpers.auth.login(receiveremail, receiverpassword, function(err, token) {
+        //login first, get new token 
+        helpers.auth.login(imap_username, imap_password, function(err, token) {
             if (err) {
                 done(new Error("Cannot authenticate: " + err));
             } else {
                 receiverToken = token;
-                helpers.invitation.getInvitations(receiverToken, receiveraccountId, receiveremail, function(err, response) {
+                helpers.invitation.getInvitations(receiverToken, receiveraccountId, imap_username, function(err, response) {
                     if (err) {
                         console.log(err)
                         done();
@@ -1294,8 +1140,8 @@ describe("Invite receiver ...\n".bold, function() {
     })
 
     it('Shall accept specific invitations', function(done){
-
-        helpers.invitation.acceptInvitation(userToken, accountId, receiveremail, inviteId, function(err, response) {
+        // can not get invite id so far
+        helpers.invitation.acceptInvitation(userToken, accountId, imap_username, inviteId, function(err, response) {
             if (err) {
                 console.log(err)
                 done();
@@ -1354,21 +1200,58 @@ describe("Invite receiver ...\n".bold, function() {
         })
     })
 })
-*/
-describe("delete users and other else ... \n".bold, function(){
 
-    /*
-    it('Shall get user info!!!!!!!!!!!!!!!!!!!!!', function (done) {
-        helpers.auth.userInfo(userToken, function (err, response) {
+describe("change password and delete receiver ... \n".bold, function(){
+
+    it('Shall request change receiver password', function(done) {
+
+        helpers.users.requestUserPasswordChange(imap_username, function(err, response) {
             if (err) {
-                done(new Error("Cannot get user info: " + err));
+                done(new Error("Cannot request change password : " + err));
             } else {
-                //userId = response.id
+                assert.equal(response.status, 'OK', 'status error')
                 done();
             }
         })
     })
-    */
+
+    it('Shall update receiver password', function(done) {
+        process.stdout.write("receiving email...");
+        helpers.mail.getEmailMessage(imap_username, imap_password, imap_host, imap_port, emailNum, function(err, message) {
+            if (!err) {
+                imap_password = 'Receiver12345'
+
+                helpers.users.updateUserPassword(token, imap_password, function(err, response) {
+                    if (err) {
+                        console.log(err)
+                        done();
+                    } else {
+                        console.log(response)
+                        done();
+                    }
+                })
+            }
+            else {
+                done(new Error("Wrong email " + err ))
+            }
+        });
+    }).timeout(2 * 60 * 1000);
+
+    it('Shall change password', function(done) {
+        var username = process.env.USERNAME;
+        var oldPasswd = process.env.PASSWORD;
+        var newPasswd = 'oispnewpasswd2'
+
+        helpers.users.changeUserPassword(userToken, username, oldPasswd, newPasswd, function(err, response) {
+            if (err) {
+                done(new Error("Cannot change password: " + err));
+            } else {
+                assert.equal(response.password, 'oispnewpasswd2', 'new password error')
+                done();
+            }
+        })
+    })
+
     it('Shall delete draft rule', function(done){
         helpers.rules.deleteRule (userToken, accountId,   null    , function(err, response){
             if (err) {
@@ -1440,4 +1323,19 @@ describe("delete users and other else ... \n".bold, function(){
             } 
         })
     })
-})
+ 
+})   
+
+    /*
+    //this api is still inavailable
+    it('Shall get user info!!!!!!!!!!!!!!!!!!!!!', function (done) {
+        helpers.auth.userInfo(userToken, function (err, response) {
+            if (err) {
+                done(new Error("Cannot get user info: " + err));
+            } else {
+                //userId = response.id
+                done();
+            }
+        })
+    })
+    */
